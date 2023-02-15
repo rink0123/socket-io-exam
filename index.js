@@ -3,7 +3,6 @@ const http = require('node:http');
 const { Server } = require('socket.io');
 const { createAdapter } = require('@socket.io/redis-adapter');
 const { pubClient, subClient } = require('./model/index');
-const dayjs = require('./dayjs');
 
 const app = express();
 const httpServer = http.createServer(app);
@@ -13,49 +12,45 @@ const io = new Server(httpServer, {
   connectTimeout: 45000,
 });
 
+io.adapter(createAdapter(pubClient, subClient));
+
+const socketKeysLog = (io, socket) => {
+  console.log(JSON.stringify({ socketKeys: Array.from(io.sockets.sockets.keys()), socketId: socket.id }));
+};
+
 app.get('/', (req, res) => {
   res.sendFile(__dirname + '/index.html');
 });
 
-io.adapter(createAdapter(pubClient, subClient));
-
-io.on('connection', async (socket) => {
+io.on('connection', (socket) => {
   socket.emit('res_connection', socket.id);
+  console.log(JSON.stringify({ res_connection: { socketId: socket.id } }));
 
-  let socketId = socket.id;
-  let startDatetime = dayjs();
-
-  let interval = setInterval(async () => {
-    if (socket.connected) {
-      let _sockets = (await io.fetchSockets()).map((row) => ({ socketId: row.id, isConnected: socket.connected }));
-      console.log(`fetchSockets: ${JSON.stringify(_sockets)}\n`);
-    } else {
-      clearInterval(interval);
-      console.log(`socketId: ${socketId}, isConnected: ${socket.connected}\n`);
-    }
+  const interval = setInterval(() => {
+    if (socket.connected) socketKeysLog(io, socket);
+    else clearInterval(interval);
   }, 1000);
 
-  socket.on('disconnect', () => {
-    console.log(
-      `disconnect: ${JSON.stringify({ socketId, isConnected: socket.connected, disconnectTime: dayjs().diff(startDatetime, 'second', true) })}\n`
-    );
-  });
+  socket.on('disconnect', () => console.log(JSON.stringify({ disconnect: { socketId: socket.id, isDisconnected: socket.disconnected } }), '\n'));
 
-  socket.on('resumeSession', async (oldSocketId) => {
-    let duplSocketIds = (await io.fetchSockets()).filter((ele) => ele.id === oldSocketId);
-    console.log(duplSocketIds.map((row) => row.id));
-    for (let i = 0; i < duplSocketIds.length - 1; i++) {
-      duplSocketIds[i].disconnect();
+  socket.on('req_resume_socket_id', (oldSocketId) => {
+    console.log({ currentSocketId: socket.id, oldSocketId });
+    const socketToDisconnect = io.sockets.sockets.get(oldSocketId);
+    if (socketToDisconnect) {
+      socketToDisconnect.disconnect();
+      console.log(`Socket ${oldSocketId} disconnected by the server`);
+
+      socket.id = oldSocketId;
+      console.log(`Socket ${socket.id} migration by the server`);
+    } else {
+      console.log(`Socket ${oldSocketId} not found`);
     }
 
-    socket.id = oldSocketId;
-    socketId = socket.id;
-    console.log('resumeSession: ', { socketId });
-  });
+    socket.emit('res_resume_socket_id', oldSocketId);
 
-  socket.on('chat', (msg) => {
-    console.log(`chat: ${JSON.stringify({ socketId, msg })}`);
-    socket.emit('chat', msg);
+    console.log('########### resume_socket_id');
+    socketKeysLog(io, socket);
+    console.log('########### resume_socket_id', '\n');
   });
 });
 
