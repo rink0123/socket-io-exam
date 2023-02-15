@@ -10,6 +10,7 @@ const httpServer = http.createServer(app);
 const io = new Server(httpServer, {
   pingInterval: 25000,
   pingTimeout: 20000,
+  connectTimeout: 45000,
 });
 
 app.get('/', (req, res) => {
@@ -19,10 +20,12 @@ app.get('/', (req, res) => {
 io.adapter(createAdapter(pubClient, subClient));
 
 io.on('connection', async (socket) => {
-  const socketId = socket.id;
-  const startDatetime = dayjs();
+  socket.emit('res_connection', socket.id);
 
-  const interval = setInterval(async () => {
+  let socketId = socket.id;
+  let startDatetime = dayjs();
+
+  let interval = setInterval(async () => {
     if (socket.connected) {
       let _sockets = (await io.fetchSockets()).map((row) => ({ socketId: row.id, isConnected: socket.connected }));
       console.log(`fetchSockets: ${JSON.stringify(_sockets)}\n`);
@@ -38,8 +41,21 @@ io.on('connection', async (socket) => {
     );
   });
 
-  socket.on('chat message', (msg) => {
-    io.emit('chat message', msg);
+  socket.on('resumeSession', async (oldSocketId) => {
+    let duplSocketIds = (await io.fetchSockets()).filter((ele) => ele.id === oldSocketId);
+    console.log(duplSocketIds.map((row) => row.id));
+    for (let i = 0; i < duplSocketIds.length - 1; i++) {
+      duplSocketIds[i].disconnect();
+    }
+
+    socket.id = oldSocketId;
+    socketId = socket.id;
+    console.log('resumeSession: ', { socketId });
+  });
+
+  socket.on('chat', (msg) => {
+    console.log(`chat: ${JSON.stringify({ socketId, msg })}`);
+    socket.emit('chat', msg);
   });
 });
 
@@ -47,5 +63,5 @@ io.on('connection', async (socket) => {
   await pubClient.connect();
   await pubClient.flushAll();
   console.log('Redis connect after data initialization');
-  httpServer.listen(4000, () => console.log(`Listening on port: ${4000}\n`));
+  httpServer.listen(3000, () => console.log(`Listening on port: ${3000}\n`));
 })();

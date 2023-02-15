@@ -5,7 +5,9 @@
   "main": "index.js",
   "scripts": {
     "pm2": "pm2 start ecosystem.config.js --only socket-io-exam",
-    "dev": "nodemon index.js"
+    "dev": "nodemon index.js",
+    "debug-only-socketio": "set DEBUG=socket.io:* & nodemon index.js",
+    "debug-with-engineio": "set DEBUG=engine,socket.io:* & nodemon index.js"
   },
   "keywords": [],
   "author": "",

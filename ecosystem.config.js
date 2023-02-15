@@ -1,7 +1,7 @@
 module.exports = {
   apps: [
     {
-      name: 'boot-socket',
+      name: 'socket-io-exam',
       script: './index.js',
       instances: 0,
       exec_mode: 'cluster',
